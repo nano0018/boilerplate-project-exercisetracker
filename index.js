@@ -12,7 +12,7 @@ require("dotenv").config();
 app.use(cors());
 
 app.use(express.static("public"));
-app.use(bodyParser.urlencoded());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 app.get("/", (req, res) => {
@@ -76,30 +76,105 @@ app.post("/api/users/:id/exercises", async (req, res) => {
 });
 
 app.get("/api/users/:id/logs", async (req, res) => {
-	const { from, to, limit } = req.query;
-	const id = req.params._id || req.body[":_id"];
+	let { from, to, limit } = req.query;
+	const id = req.params.id || req.body[":_id"];
 	if (!id) {
 		return res.json({ error: "ID is required" });
 	}
-	from =
-		new Date(from) === "Invalid Date"
-			? res.json("Invalid Date Entered")
-			: from;
-	to =
-		new Date(to) === "Invalid Date" ? res.json("Invalid Date Entered") : to;
-	limit =
-		new Number(limit) === isNaN(limit)
-			? res.json("Invalid Limit Entered")
-			: limit;
-  try {
-    const user = await userServiceImpl.findUserById(username);
+
+	from = new Date(from);
+	if (from == "Invalid Date") {
+		return res.json({ error: "Invalid query param 'from' entered" });
+	}
+
+	to = new Date(to);
+	if (to == "Invalid Date") {
+		return res.json({ error: "Invalid query param 'to' entered" });
+	}
+
+	limit = new Number(limit);
+	if (isNaN(limit)) {
+		return res.json({ error: "Invalid query param 'limit' entered" });
+	}
+
+	try {
+		let user = await userServiceImpl.findUserById(id);
+		user = {
+			...user._doc,
+		};
+		delete user.__v;
 		if (!user) {
 			return res.json({ error: "User ID not found" });
 		}
-  } catch (error) {
+		const findFilter = { username: user.username };
+		const dateFilter = {};
 
-  }
+		if (from) {
+			user = {
+				...user,
+				from: from.toDateString(),
+			};
+
+			dateFilter["$gte"] = from;
+		}
+
+		if (to) {
+			user = {
+				...user,
+				to: to.toDateString(),
+			};
+			dateFilter["$lt"] = to;
+		} else {
+			dateFilter["$lt"] = Date.now();
+		}
+		if (to || from) {
+			findFilter.date = dateFilter;
+		}
+
+    const exerciseCount = await exerciseServiceImpl.exerciseCount(findFilter);
+    if (limit && limit < exerciseCount) {
+      exerciseCount =  limit;
+    }
+
+    const exercises = await exerciseServiceImpl.findExercisesByFilter(findFilter, exerciseCount);
+    const logArray = [];
+    const objectSubset = {};
+    const count = 0;
+
+    exercises.forEach((exercise) => {
+      count += 1;
+      if (!limit || count <= limit) {
+        objectSubset = {};
+        objectSubset.description = exercise.description;
+        objectSubset.duration = exercise.duration;
+        objectSubset.date = exercise.date.toDateString();
+        logArray.push(objectSubset);
+      }
+    });
+    user = {
+      ...user,
+      log: logArray,
+    }
+
+		return res.json(user);
+	} catch (error) {
+		res.status(500).json({
+			error: error.message,
+		});
+	}
 });
+
+app.get("/api/exercises", async (req, res) => {
+  try {
+		const exercises = await exerciseServiceImpl.findExercises();
+		res.json(exercises);
+	} catch (error) {
+		res.status(500).json({
+			error: error.message,
+		});
+	}
+
+})
 
 /**
  * App start

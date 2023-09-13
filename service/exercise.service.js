@@ -15,6 +15,16 @@ class ExerciseService {
 		const newExercise = await model.create({ exercise });
 		return newExercise;
 	}
+
+  async exerciseCount(filter) {
+    const count = await model.count(filter);
+    return count;
+  }
+
+  async findExercisesByFilter(filter) {
+		const exercises = await model.find(filter);
+		return exercises;
+	}
 }
 
 module.exports = ExerciseService;
